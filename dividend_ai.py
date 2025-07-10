@@ -2,54 +2,53 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 
-# Streamlit page setup
+# ---- Streamlit setup ----
 st.set_page_config(page_title="CashCurve", layout="centered")
 st.title("CashCurve")
-st.caption("Visualize your income and growth over time — investment-based insights.")
+st.caption("Visualize your income and growth with math that makes sense.")
 
-# User Inputs
+# ---- Inputs ----
 ticker = st.text_input("Stock Ticker", value="AAPL").upper()
 amount_invested = st.number_input("Amount Invested ($)", min_value=0.0, step=100.0)
 term_years = st.number_input("Term Held (Years)", min_value=1, step=1)
 refresh = st.button("Refresh Data")
 
-# Data pull with caching
+# ---- Data Pull ----
 @st.cache_data(ttl=120)
 def get_data(ticker):
     stock = yf.Ticker(ticker)
     info = stock.info
-    history = stock.history(period="6mo")
-    return info, history
+    hist = stock.history(period="6mo")
+    return info, hist
 
-# Dividend logic
-def compute_dividends(info, amount_invested):
+# ---- Core Dividend Logic ----
+def compute_dividends(info, amount_invested, term_years):
     price = info.get("regularMarketPrice", 0.0)
-    rate = info.get("dividendRate", 0.0) or 0.0
-    yield_pct = info.get("dividendYield", 0.0) or 0.0
+    dividend_rate = info.get("dividendRate", 0.0) or 0.0
+    dividend_yield = info.get("dividendYield", 0.0) or 0.0
 
-    # Fallback logic
-    if rate == 0.0 and yield_pct > 0 and price > 0:
-        rate = price * yield_pct
-    if yield_pct == 0.0 and rate > 0 and price > 0:
-        yield_pct = rate / price
+    # Fill missing data
+    if dividend_rate == 0.0 and dividend_yield > 0 and price > 0:
+        dividend_rate = price * dividend_yield
+    if dividend_yield == 0.0 and dividend_rate > 0 and price > 0:
+        dividend_yield = dividend_rate / price
 
     shares = amount_invested / price if price > 0 else 0
-    annual_income = rate * shares
+    annual_dividend_income = shares * dividend_rate
+    total_dividends = annual_dividend_income * term_years
+    projected_asset_value = shares * price  # Flat price assumption
 
     return {
         "Share Price ($)": round(price, 2),
-        "Estimated Shares": round(shares, 4),
-        "Dividend / Share ($/yr)": round(rate, 2),
-        "Dividend Yield (%)": round(yield_pct * 100, 2),
-        "Annual Dividend Income ($)": round(annual_income, 2),
-        "Monthly Income ($)": round(annual_income / 12, 2),
-        "Weekly Income ($)": round(annual_income / 52, 2),
-        "Daily Income ($)": round(annual_income / 365, 2),
-        "Total Dividends Over Term ($)": round(annual_income * term_years, 2),
-        "Total Projected Asset Value ($)": round(price * shares, 2),
+        "Dividend per Share ($/yr)": round(dividend_rate, 2),
+        "Dividend Yield (%)": round(dividend_yield * 100, 2),
+        "Estimated Shares =": round(shares, 4),
+        "Annual Dividend Income =": round(annual_dividend_income, 2),
+        f"Total Dividends Over {term_years} Years =": round(total_dividends, 2),
+        f"Projected Asset Value =": round(projected_asset_value, 2),
     }
 
-# Risk metrics
+# ---- Risk Metrics ----
 def compute_risk(info):
     return {
         "Beta": round(info.get("beta", 0.0), 2),
@@ -58,7 +57,7 @@ def compute_risk(info):
         "52-Week Change (%)": round(info.get("52WeekChange", 0.0) * 100, 2),
     }
 
-# Momentum indicators
+# ---- Momentum Indicators ----
 def compute_momentum(history):
     close = history["Close"].dropna()
     if len(close) < 50:
@@ -86,47 +85,31 @@ def compute_momentum(history):
 
     return momentum
 
-# RSI calculator
 def compute_rsi(series, period=14):
     delta = series.diff().dropna()
     gain = delta.where(delta > 0, 0.0)
     loss = -delta.where(delta < 0, 0.0)
-
     avg_gain = gain.rolling(window=period).mean()
     avg_loss = loss.rolling(window=period).mean()
-
     rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
-
     return rsi.iloc[-1] if not rsi.empty else 0
 
-# Run app logic
+# ---- Display Logic ----
 if ticker and amount_invested > 0 and term_years > 0:
-    info, history = get_data(ticker)
+    info, hist = get_data(ticker)
 
-    # Dividend Forecast
-    st.subheader("Dividend Income Forecast")
-    dividends = compute_dividends(info, amount_invested)
-    st.dataframe(pd.DataFrame(dividends.items(), columns=["Metric", "Value"]), use_container_width=True)
+    st.subheader("📘 Dividend Income Forecast (Math View)")
+    data = compute_dividends(info, amount_invested, term_years)
+    for label, value in data.items():
+        st.markdown(f"**{label}** ${value:,.2f}")
 
-    # Risk Section
-    st.subheader("Risk Analysis")
+    st.subheader("🛡️ Risk Metrics")
     risk = compute_risk(info)
     st.dataframe(pd.DataFrame(risk.items(), columns=["Metric", "Value"]), use_container_width=True)
 
-    # Momentum Section
-    st.subheader("Momentum Indicators")
-    momentum = compute_momentum(history)
+    st.subheader("📈 Momentum Indicators")
+    momentum = compute_momentum(hist)
     st.dataframe(pd.DataFrame(momentum.items(), columns=["Indicator", "Value"]), use_container_width=True)
-
-    # Summary
-    st.markdown("---")
-    st.markdown(
-        f"Based on a **${amount_invested:,.2f}** investment in **{ticker}**, your estimated "
-        f"**total dividends over {term_years} years** would be approximately "
-        f"**${dividends['Total Dividends Over Term ($)']:.2f}**, and your "
-        f"**projected asset value** would remain around "
-        f"**${dividends['Total Projected Asset Value ($)']:.2f}** (assuming no price change)."
-    )
 else:
     st.info("Enter a stock ticker, investment amount, and term held (in years) to begin.")
