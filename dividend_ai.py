@@ -10,7 +10,7 @@ st.caption("Visualize your income and growth over time — investment-based insi
 # --- USER INPUT ---
 ticker = st.text_input("Stock Ticker", value="AAPL").upper()
 
-# --- LIVE DATA SNAPSHOT ---
+# --- LIVE METRICS ---
 if ticker:
     try:
         live = yf.Ticker(ticker).info
@@ -24,12 +24,12 @@ if ticker:
     except:
         st.warning("Unable to fetch live data.")
 
-# --- CONTINUE INPUT ---
+# --- INVESTMENT DETAILS ---
 amount_invested = st.number_input("Amount Invested ($)", min_value=0.0, step=100.0)
 term_years = st.number_input("Term Held (Years)", min_value=1, step=1)
 drip_enabled = st.toggle("Enable Dividend Reinvestment (DRIP)", value=False)
 
-# --- DATA FETCH ---
+# --- CACHED DATA ---
 @st.cache_data(ttl=120)
 def get_data(tkr):
     stock = yf.Ticker(tkr)
@@ -37,7 +37,7 @@ def get_data(tkr):
     hist = stock.history(period="2y")
     return info, hist
 
-# --- CAGR ---
+# --- CAGR CALCULATION ---
 def calculate_cagr(hist):
     close = hist["Close"].dropna()
     if len(close) < 2:
@@ -50,8 +50,8 @@ def calculate_cagr(hist):
     cagr = ((end / start) ** (1 / years)) - 1
     return round(cagr * 100, 2), round(start, 2), round(end, 2)
 
-# --- FORECAST ---
-def compute_forecast(info, hist, amount, term, drip, growth_override):
+# --- FORECAST LOGIC ---
+def compute_forecast(info, hist, amount, term, drip, growth_rate):
     price = info.get("regularMarketPrice", 0.0)
     div_rate = info.get("dividendRate", 0.0) or 0.0
     dy = info.get("dividendYield", 0.0) or 0.0
@@ -60,7 +60,7 @@ def compute_forecast(info, hist, amount, term, drip, growth_override):
 
     shares = amount / price if price > 0 else 0
     annual_div = shares * div_rate
-    growth_factor = 1 + (growth_override / 100)
+    growth_factor = 1 + (growth_rate / 100)
 
     if drip:
         for _ in range(term):
@@ -79,13 +79,13 @@ def compute_forecast(info, hist, amount, term, drip, growth_override):
         "Dividend Yield (%)": round(dy * 100, 2),
         "Estimated Shares": round(shares, 4),
         "Annual Dividend Income ($)": round(annual_div, 2),
-        "Growth Rate Used (%)": round(growth_override, 2),
+        "Growth Rate Used (%)": round(growth_rate, 2),
         "Future Price Estimate": round(future_price, 2),
         "Total Dividends Over Term": round(total_div, 2),
         "Projected Asset Value": round(future_value, 2)
     }
 
-# --- RSI ---
+# --- RSI CALC ---
 def compute_rsi(series, period=14):
     delta = series.diff().dropna()
     gain = delta.where(delta > 0, 0.0)
@@ -95,51 +95,50 @@ def compute_rsi(series, period=14):
     rs = avg_gain / avg_loss
     return (100 - (100 / (1 + rs))).iloc[-1] if not rs.empty else 0
 
-# --- DISPLAY ---
+# --- MAIN OUTPUT ---
 if ticker and amount_invested > 0 and term_years > 0:
     info, hist = get_data(ticker)
     cagr, start_price, end_price = calculate_cagr(hist)
 
-    # Growth override option
     st.subheader("📈 Projected Growth Rate")
     st.markdown(f"**Auto-calculated CAGR (2-year):** {cagr}%")
     use_override = st.toggle("Override with my own growth %", value=False)
-    if use_override:
-        growth_override = st.number_input("Enter your own projected annual growth rate (%)", value=cagr, step=0.1)
-    else:
-        growth_override = cagr
+    growth_rate = st.number_input("Enter your own projected annual growth rate (%)", value=cagr, step=0.1) if use_override else cagr
 
-    # Forecast
-    forecast = compute_forecast(info, hist, amount_invested, term_years, drip_enabled, growth_override)
+    forecast = compute_forecast(info, hist, amount_invested, term_years, drip_enabled, growth_rate)
 
-    # Price Growth Summary
     st.subheader("📊 Projected Stock Price Growth")
     st.markdown(f"- **Price 2 Years Ago:** ${start_price}")
     st.markdown(f"- **Current Price:** ${end_price}")
-    st.markdown(f"- **Growth Rate Used:** {growth_override}%")
+    st.markdown(f"- **Growth Rate Used:** {growth_rate}%")
     st.markdown(f"- **Projected Price in {term_years} Years:** ${forecast['Future Price Estimate']}")
 
-    # Forecast Breakdown
     st.subheader("📘 Forecast Breakdown")
     st.markdown(f"**Shares =** ${amount_invested} ÷ ${forecast['Current Price']} = {forecast['Estimated Shares']}")
     st.markdown(f"**Annual Dividends =** {forecast['Estimated Shares']} × ${forecast['Dividend/Share ($/yr)']} = ${forecast['Annual Dividend Income ($)']}")
 
-    # 🔷 Highlight Projected Asset Value (navy blue text)
+    # --- MODERN STYLED HIGHLIGHT ---
     st.markdown(
-        f"""<div style="background-color:#e7f8ef;padding:16px;border-radius:10px;">
-        <h4 style="margin-bottom:0;">💰 Projected Asset Value</h4>
-        <p style="font-size:22px;color:#0A2342;font-weight:bold;margin-top:4px;">${forecast['Projected Asset Value']}</p>
-        </div>""",
+        f"""
+        <div style="background: linear-gradient(135deg, #eef2f3, #d0e1f9);
+                    padding: 20px 25px;
+                    border-radius: 12px;
+                    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06); 
+                    margin: 20px 0;">
+            <h4 style="color: #0A2342; margin-bottom: 10px;">💰 Projected Asset Value</h4>
+            <p style="font-size: 26px; font-weight: 700; color: #0A2342; margin: 0;">
+                ${forecast['Projected Asset Value']}
+            </p>
+        </div>
+        """,
         unsafe_allow_html=True
     )
 
     st.markdown(f"**Total Dividends Over {term_years} Years =** ${forecast['Total Dividends Over Term']}")
 
-    # Summary Table
     st.subheader("🧾 Summary")
     st.dataframe(pd.DataFrame(forecast.items(), columns=["Metric", "Value"]), use_container_width=True)
 
-    # Risk Metrics
     st.subheader("🛡️ Risk Metrics")
     risk = {
         "Beta": round(info.get("beta", 0.0), 2),
@@ -149,7 +148,6 @@ if ticker and amount_invested > 0 and term_years > 0:
     }
     st.table(pd.DataFrame.from_dict(risk, orient="index", columns=["Value"]))
 
-    # Momentum Indicators
     st.subheader("📈 Momentum Indicators")
     close = hist["Close"].dropna()
     if len(close) >= 50:
