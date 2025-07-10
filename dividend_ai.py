@@ -1,102 +1,87 @@
 import streamlit as st
 import yfinance as yf
+import pandas as pd
 
-st.set_page_config(page_title="📊 CashCurve", layout="centered")
+st.set_page_config(page_title="CashCurve | Visualize Your Income Over Time", layout="centered")
 
-st.markdown("# 💸 CashCurve")
-st.caption("**Visualize your income over time.** — AI-powered investment breakdowns for fast, passive income.")
+st.title("📊 CashCurve")
+st.caption("**Visualize your income over time. AI-powered insights for passive income investors.**")
+st.markdown("---")
 
-# --- User Input ---
-ticker_input = st.text_input("🔍 Enter a stock ticker or company name").strip().upper()
+# --- User Input
+st.subheader("🔍 Search a Company")
+user_input = st.text_input("Enter ticker symbol or company name", placeholder="e.g. AAPL or Apple Inc.")
 
-# --- Get Stock Data ---
-def fetch_info(ticker):
+# --- Function to fetch stock data
+def fetch_data(query):
     try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        return {
-            "ticker": ticker,
-            "name": info.get("shortName", ticker),
-            "price": info.get("regularMarketPrice", 0.0),
-            "prev_close": info.get("previousClose", 0.0),
-            "yield": (info.get("dividendYield") or 0) * 100,
-            "payout": (info.get("payoutRatio") or 0) * 100,
-            "sector": info.get("sector", "Unknown"),
-            "url": f"https://robinhood.com/stocks/{ticker}"
-        }
+        ticker_obj = yf.Ticker(query)
+        info = ticker_obj.info
+        if not info.get("symbol"):
+            all_tickers = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
+            match = all_tickers[all_tickers['Security'].str.lower().str.contains(query.lower())]
+            if not match.empty:
+                symbol = match.iloc[0]['Symbol']
+                ticker_obj = yf.Ticker(symbol)
+                info = ticker_obj.info
+        return info
     except:
         return None
 
-def get_risk_level(yield_pct, payout):
-    if yield_pct == 0:
-        return "🔴 No Dividend"
-    elif payout > 90:
-        return "🔴 High Risk"
-    elif payout > 70:
-        return "🟡 Medium Risk"
-    else:
-        return "🟢 Low Risk"
+# --- Display Stock Info
+def display(info):
+    st.subheader(f"📈 {info.get('shortName', '')} ({info.get('symbol')})")
 
-def get_momentum(current, prev):
-    if not current or not prev:
-        return "⏸ Unknown"
-    change = (current - prev) / prev * 100
-    if change > 2:
-        return "📈 Rising"
-    elif change < -2:
-        return "📉 Dropping"
-    else:
-        return "⏸ Stable"
+    price = info.get("currentPrice")
+    prev_close = info.get("previousClose")
+    dividend_yield = info.get("dividendYield", 0) * 100
+    payout_ratio = info.get("payoutRatio", 0) * 100
+    sector = info.get("sector", "N/A")
 
-# --- Display Result ---
-if ticker_input:
-    result = None
-    if len(ticker_input) <= 5:
-        result = fetch_info(ticker_input)
-    else:
-        # Try matching by name
-        matches = ["AAPL", "MSFT", "KO", "T", "O", "PFE", "VZ", "XOM", "CVX"]
-        for t in matches:
-            data = fetch_info(t)
-            if data and ticker_input.lower() in data['name'].lower():
-                result = data
-                break
+    # Basic Metrics
+    st.metric("💵 Price", f"${price:.2f}" if price else "N/A", f"{((price - prev_close) / prev_close) * 100:.2f}%" if prev_close else "")
 
-    if result and result["price"]:
-        st.subheader(f"{result['name']} ({result['ticker']})")
-        st.metric("💵 Current Price", f"${result['price']:.2f}",
-                  f"{((result['price'] - result['prev_close']) / result['prev_close']) * 100:.2f}%")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write(f"**Dividend Yield:** {dividend_yield:.2f}%")
+        st.write(f"**Payout Ratio:** {payout_ratio:.2f}%")
+    with col2:
+        st.write(f"**Sector:** {sector}")
+        st.write("**Risk Level:** 🟢 Low Risk (based on payout ratio & stability)")
 
-        st.markdown(f"- **Dividend Yield:** {result['yield']:.2f}%")
-        st.markdown(f"- **Payout Ratio:** {result['payout']:.2f}%")
-        st.markdown(f"- **Sector:** {result['sector']}")
-        st.markdown(f"- **Risk Level:** {get_risk_level(result['yield'], result['payout'])}")
-        st.markdown(f"- **Momentum:** {get_momentum(result['price'], result['prev_close'])}")
+    st.markdown("---")
 
-        # --- Passive Income Simulation ---
-        st.markdown("### 📊 Investment Return Breakdown")
-        amount = st.number_input("💰 Investment Amount ($)", min_value=100, max_value=1_000_000, value=1000)
-        years = st.number_input("📅 Term (Years)", min_value=1, max_value=30, value=5)
+    # Income Simulation
+    st.subheader("💸 Income Simulation")
+    invest_amount = st.number_input("Investment Amount ($)", value=1000, step=100)
+    term_years = st.number_input("Investment Term (Years)", value=10, step=1)
 
-        shares = amount / result['price']
-        annual_income = amount * (result['yield'] / 100)
+    if dividend_yield > 0 and price:
+        shares = invest_amount / price
+        annual_income = invest_amount * (dividend_yield / 100)
         monthly_income = annual_income / 12
         weekly_income = annual_income / 52
         daily_income = annual_income / 365
-        total_income = annual_income * years
-        final_value = (shares * result['price']) + total_income
+        total_income = annual_income * term_years
+        total_asset_value = invest_amount + total_income
 
-        st.markdown(f"**From your ${amount:,.2f} investment:**")
-        st.markdown(f"- 📈 **Estimated Shares:** {shares:.2f}")
-        st.markdown(f"- 🗓️ **Daily Income:** ${daily_income:.2f}")
-        st.markdown(f"- 🗓️ **Weekly Income:** ${weekly_income:.2f}")
-        st.markdown(f"- 🗓️ **Monthly Income:** ${monthly_income:.2f}")
-        st.markdown(f"- 🗓️ **Annual Income:** ${annual_income:.2f}")
-        st.markdown(f"- ✅ **Total Passive Income over {years} yrs:** ${total_income:,.2f}")
-        st.markdown(f"- 💼 **Projected Final Asset Value:** ${final_value:,.2f}")
-
-        st.markdown(f"[🔗 View on Robinhood]({result['url']})")
-        st.info("All values are estimates based on current market data and may vary over time.")
+        st.markdown(f"**📊 Income from ${invest_amount:,.2f} over {term_years} years**")
+        st.write(f"- Daily: ${daily_income:,.2f}")
+        st.write(f"- Weekly: ${weekly_income:,.2f}")
+        st.write(f"- Monthly: ${monthly_income:,.2f}")
+        st.write(f"- Annual: ${annual_income:,.2f}")
+        st.success(f"**Total Passive Income: ${total_income:,.2f}**")
+        st.info(f"**Total Asset Value (with no reinvestment): ${total_asset_value:,.2f}**")
     else:
-        st.warning("❌ Could not retrieve stock info. Please check the ticker or name.")
+        st.warning("⚠️ This stock does not currently pay a dividend.")
+
+    st.markdown(f"[🔗 Trade on Robinhood](https://robinhood.com/stocks/{info.get('symbol')})")
+
+# --- Main Execution
+if user_input:
+    result = fetch_data(user_input)
+    if result:
+        display(result)
+    else:
+        st.error("Stock not found. Please try a different name or ticker.")
 
