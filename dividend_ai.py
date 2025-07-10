@@ -4,7 +4,6 @@ import pandas as pd
 
 # --- PAGE SETUP ---
 st.set_page_config(page_title="CashCurve", layout="centered")
-st.image("cashcurve_logo.png", width=220)
 st.title("CashCurve")
 st.caption("Visualize what your money becomes — with real data and reinvestment forecasting.")
 
@@ -35,7 +34,7 @@ def calculate_cagr(hist):
     cagr = ((end / start) ** (1 / years)) - 1
     return round(cagr * 100, 2)
 
-# --- FORECAST CALCULATION ---
+# --- FORECAST LOGIC ---
 def compute_forecast(info, hist, amount, term, drip):
     price = info.get("regularMarketPrice", 0.0)
     div_rate = info.get("dividendRate", 0.0) or 0.0
@@ -71,7 +70,7 @@ def compute_forecast(info, hist, amount, term, drip):
         "Projected Asset Value": round(future_value, 2)
     }
 
-# --- RSI CALCULATION ---
+# --- RSI CALC ---
 def compute_rsi(series, period=14):
     delta = series.diff().dropna()
     gain = delta.where(delta > 0, 0.0)
@@ -81,16 +80,14 @@ def compute_rsi(series, period=14):
     rs = avg_gain / avg_loss
     return (100 - (100 / (1 + rs))).iloc[-1] if not rs.empty else 0
 
-# --- APP LOGIC ---
+# --- APP DISPLAY ---
 if ticker and amount_invested > 0 and term_years > 0:
     info, hist = get_data(ticker)
     forecast = compute_forecast(info, hist, amount_invested, term_years, drip_enabled)
 
-    # --- LIVE CHART ---
     st.subheader("📊 Live Price Chart")
     st.line_chart(hist["Close"], use_container_width=True)
 
-    # --- FORECAST EQUATIONS ---
     st.subheader("📘 Forecast Breakdown")
     st.markdown(f"**Shares =** `${amount_invested} ÷ {forecast['Current Price']} = {forecast['Estimated Shares']}`")
     st.markdown(f"**Annual Dividends =** `{forecast['Estimated Shares']} × {forecast['Dividend/Share ($/yr)']} = {forecast['Annual Dividend Income ($)']}`")
@@ -99,11 +96,9 @@ if ticker and amount_invested > 0 and term_years > 0:
     st.markdown(f"**Future Value =** `{forecast['Estimated Shares']} × {forecast['Future Price Estimate']} = {forecast['Projected Asset Value']}`")
     st.markdown(f"**Total Dividends Over {term_years} Years =** `${forecast['Total Dividends Over Term']}`")
 
-    # --- SUMMARY TABLE ---
     st.subheader("🧾 Summary")
     st.dataframe(pd.DataFrame(forecast.items(), columns=["Metric", "Value"]), use_container_width=True)
 
-    # --- RISK METRICS ---
     st.subheader("🛡️ Risk Metrics")
     risk = {
         "Beta": round(info.get("beta", 0.0), 2),
@@ -113,7 +108,6 @@ if ticker and amount_invested > 0 and term_years > 0:
     }
     st.table(pd.DataFrame.from_dict(risk, orient="index", columns=["Value"]))
 
-    # --- MOMENTUM ---
     st.subheader("📈 Momentum Indicators")
     close = hist["Close"].dropna()
     if len(close) >= 50:
