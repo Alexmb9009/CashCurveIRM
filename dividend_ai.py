@@ -1,90 +1,110 @@
 import streamlit as st
-import yfinance as yf
+import requests
+import datetime
 
-st.set_page_config(page_title="CashCurve – AI Investment Risk Advisor", layout="wide")
+API_KEY = "H0CM17PePAJ_6ny8pFIqgxwOfXYhD9Tp"
 
-st.title("📊 CashCurve")
-st.caption("Visualize your income over time — AI-powered investment insights.")
-st.divider()
+# ---------------------- Functions ---------------------- #
 
-# --- Search ---
-query = st.text_input("🔍 Search by Company Name or Ticker (e.g., AAPL or Apple)", value="AAPL").strip().upper()
-
-def find_ticker(q):
+def get_stock_info(ticker):
     try:
-        if len(q) <= 5:
-            return q
-        search = yf.Ticker(q)
-        return search.ticker
-    except:
+        # Get current price
+        price_url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/prev?adjusted=true&apiKey={API_KEY}"
+        r = requests.get(price_url)
+        price_data = r.json()['results'][0]
+        price = price_data['c']
+        prev_close = price_data['c']  # You can refine this to get actual close if needed
+
+        # Get fundamentals
+        fund_url = f"https://api.polygon.io/v3/reference/tickers/{ticker}?apiKey={API_KEY}"
+        f = requests.get(fund_url).json()
+        name = f['results'].get('name', ticker)
+        sector = f['results'].get('sic_description', 'Unknown')
+
+        # Get dividend yield
+        div_url = f"https://api.polygon.io/v3/reference/dividends?ticker={ticker}&apiKey={API_KEY}&limit=1"
+        d = requests.get(div_url).json()
+        if d['results']:
+            dividend = float(d['results'][0]['cash_amount']) * float(d['results'][0]['frequency'].lower().count("quarterly") + 1)
+            yield_percent = dividend / price
+        else:
+            dividend = 0
+            yield_percent = 0
+
+        # Cap high yields
+        if yield_percent > 0.2:
+            yield_percent = 0.2
+            yield_warning = True
+        else:
+            yield_warning = False
+
+        payout_ratio = 0.5  # Polygon doesn’t provide this directly — assume a safe 50%
+
+        return {
+            "name": name,
+            "price": price,
+            "prev_close": prev_close,
+            "dividend_yield": yield_percent,
+            "payout_ratio": payout_ratio,
+            "sector": sector,
+            "yield_warning": yield_warning
+        }
+
+    except Exception as e:
+        st.error(f"Failed to fetch data: {e}")
         return None
 
-ticker = find_ticker(query)
 
-if ticker:
-    stock = yf.Ticker(ticker)
-    info = stock.info
+def simulate_income(price, yield_pct, amount, term_months):
+    annual_return = amount * yield_pct
+    monthly_return = annual_return / 12
+    daily = monthly_return / 30.44
+    weekly = monthly_return / 4.35
+    annual = annual_return
+    total_income = monthly_return * (term_months)
+    asset_value = amount + total_income
+    return daily, weekly, monthly_return, annual, total_income, asset_value
 
-    # --- Price Info ---
-    price = info.get("regularMarketPrice", 0)
-    prev_close = info.get("previousClose", 0)
-    change_pct = ((price - prev_close) / prev_close) * 100 if prev_close else 0
 
-    # --- Dividend Logic ---
-    dividend_rate = info.get("dividendRate")  # annual dividend per share
-    payout_ratio = info.get("payoutRatio", 0)
-    raw_yield = (dividend_rate / price) if dividend_rate and price else info.get("dividendYield", 0)
-    max_yield = 0.20
-    dividend_yield = min(raw_yield or 0, max_yield)
+# ---------------------- UI ---------------------- #
 
-    # --- Metadata ---
-    sector = info.get("sector", "N/A")
-    name = info.get("shortName", ticker)
+st.set_page_config(page_title="CashCurve – AI Investment Risk Advisor", layout="centered")
 
-    # --- Display Header ---
-    st.subheader(f"{name} ({ticker})")
-    col1, col2 = st.columns(2)
+st.title("💸 CashCurve")
+st.caption("Visualize your income over time. Powered by AI + Polygon.io")
 
-    with col1:
-        st.metric("💵 Price", f"${price:.2f}", f"{change_pct:.2f}%")
-        st.write(f"**Dividend Yield:** {round((raw_yield or 0) * 100, 2)}%")
-        st.write(f"**Payout Ratio:** {round((payout_ratio or 0) * 100, 2)}%")
+ticker_input = st.text_input("🔍 Search a company by ticker (e.g., AAPL)", value="AAPL").upper()
 
-    with col2:
-        st.write(f"**Sector:** {sector}")
-        risk_level = "🟢 Low Risk" if payout_ratio < 0.6 else "🟠 Medium Risk" if payout_ratio < 0.85 else "🔴 High Risk"
-        st.write(f"**Risk Level:** {risk_level}")
-        momentum = "📈 Rising" if change_pct > 1 else "📉 Falling" if change_pct < -1 else "⏸ Stable"
-        st.write(f"**Momentum:** {momentum}")
+if ticker_input:
+    data = get_stock_info(ticker_input)
 
-    if raw_yield and raw_yield > max_yield:
-        st.warning("⚠️ Yield appears unusually high. Capped at 20% for realistic simulation.")
+    if data:
+        st.header(f"{data['name']} ({ticker_input})")
+        st.metric("💵 Price", f"${data['price']:.2f}")
+        st.write(f"Dividend Yield: {data['dividend_yield'] * 100:.2f}%")
+        if data['yield_warning']:
+            st.warning("⚠️ Yield is unusually high. Displaying capped value for realistic return.")
+        st.write(f"Payout Ratio (estimated): {data['payout_ratio'] * 100:.1f}%")
+        st.write(f"Sector: {data['sector']}")
 
-    st.divider()
+        st.subheader("📊 Income from Investment")
 
-    # --- Income Simulator ---
-    st.subheader("💸 Income Simulation")
+        invest_amt = st.number_input("💰 Investment Amount ($)", value=1000, min_value=10, max_value=1_000_000, step=100)
+        term = st.number_input("📆 Investment Term (months)", value=12, min_value=1, max_value=360, step=1)
 
-    investment_amount = st.number_input("Investment Amount ($)", min_value=100, max_value=1_000_000, value=10_000, step=100)
-    term_years = st.number_input("Investment Term (Years)", min_value=1, max_value=30, value=5)
+        daily, weekly, monthly, annual, total_income, asset_value = simulate_income(
+            data['price'], data['dividend_yield'], invest_amt, term)
 
-    annual_income = investment_amount * dividend_yield
-    monthly_income = annual_income / 12
-    weekly_income = annual_income / 52
-    daily_income = annual_income / 365
-    total_income = annual_income * term_years
-    total_asset = investment_amount + total_income
+        st.write(f"**Daily Income:** ${daily:.2f}")
+        st.write(f"**Weekly Income:** ${weekly:.2f}")
+        st.write(f"**Monthly Income:** ${monthly:.2f}")
+        st.write(f"**Annual Income:** ${annual:.2f}")
+        st.success(f"📈 Total Income over {term} months: ${total_income:.2f}")
+        st.info(f"💼 Projected Asset Value: ${asset_value:.2f}")
 
-    st.markdown(f"📊 **Income from ${investment_amount:,.2f} over {term_years} years**")
-    st.write(f"- Daily: ${daily_income:,.2f}")
-    st.write(f"- Weekly: ${weekly_income:,.2f}")
-    st.write(f"- Monthly: ${monthly_income:,.2f}")
-    st.write(f"- Annual: ${annual_income:,.2f}")
-    st.success(f"✅ Total Passive Income: ${total_income:,.2f}")
-    st.markdown(f"💼 **Estimated Total Asset Value: ${total_asset:,.2f}**")
+        robinhood_url = f"https://robinhood.com/stocks/{ticker_input}"
+        st.markdown(f"[🔗 View on Robinhood]({robinhood_url})")
 
-    # --- Robinhood Link ---
-    st.markdown(f"[🔗 Trade on Robinhood](https://robinhood.com/stocks/{ticker.lower()})")
 
-else:
-    st.info("Enter a valid stock name or ticker to begin.")
+st.markdown("---")
+st.caption("Built with ❤️ using Polygon.io and Streamlit | [Join GitHub](https://github.com/Alexmb9009/CashCurveIRM)")
