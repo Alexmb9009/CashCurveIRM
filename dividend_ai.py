@@ -35,7 +35,7 @@ def calculate_cagr(hist):
     return round(cagr * 100, 2), round(start, 2), round(end, 2)
 
 # --- FORECAST ---
-def compute_forecast(info, hist, amount, term, drip):
+def compute_forecast(info, hist, amount, term, drip, growth_override):
     price = info.get("regularMarketPrice", 0.0)
     div_rate = info.get("dividendRate", 0.0) or 0.0
     dy = info.get("dividendYield", 0.0) or 0.0
@@ -44,8 +44,7 @@ def compute_forecast(info, hist, amount, term, drip):
 
     shares = amount / price if price > 0 else 0
     annual_div = shares * div_rate
-    cagr, _, _ = calculate_cagr(hist)
-    growth_factor = 1 + (cagr / 100)
+    growth_factor = 1 + (growth_override / 100)
 
     if drip:
         for _ in range(term):
@@ -64,7 +63,7 @@ def compute_forecast(info, hist, amount, term, drip):
         "Dividend Yield (%)": round(dy * 100, 2),
         "Estimated Shares": round(shares, 4),
         "Annual Dividend Income ($)": round(annual_div, 2),
-        "Growth Rate (CAGR, 2Y)": round(cagr, 2),
+        "Growth Rate Used (%)": round(growth_override, 2),
         "Future Price Estimate": round(future_price, 2),
         "Total Dividends Over Term": round(total_div, 2),
         "Projected Asset Value": round(future_value, 2)
@@ -84,12 +83,23 @@ def compute_rsi(series, period=14):
 if ticker and amount_invested > 0 and term_years > 0:
     info, hist = get_data(ticker)
     cagr, start_price, end_price = calculate_cagr(hist)
-    forecast = compute_forecast(info, hist, amount_invested, term_years, drip_enabled)
+
+    # NEW: Ask if user wants to override CAGR
+    st.subheader("📈 Projected Growth Rate")
+    st.markdown(f"**Auto-calculated CAGR (2-year):** {cagr}%")
+    use_override = st.toggle("Override with my own growth %", value=False)
+
+    if use_override:
+        growth_override = st.number_input("Enter your own projected annual growth rate (%)", value=cagr, step=0.1)
+    else:
+        growth_override = cagr
+
+    forecast = compute_forecast(info, hist, amount_invested, term_years, drip_enabled, growth_override)
 
     st.subheader("📊 Projected Stock Price Growth")
     st.markdown(f"- **Price 2 Years Ago:** ${start_price}")
     st.markdown(f"- **Current Price:** ${end_price}")
-    st.markdown(f"- **2-Year CAGR:** {cagr}%")
+    st.markdown(f"- **Growth Rate Used:** {growth_override}%")
     st.markdown(f"- **Projected Price in {term_years} Years:** ${forecast['Future Price Estimate']}")
 
     st.subheader("📘 Forecast Breakdown")
