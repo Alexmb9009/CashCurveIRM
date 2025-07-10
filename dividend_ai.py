@@ -84,33 +84,46 @@ if ticker and amount_invested > 0 and term_years > 0:
     info, hist = get_data(ticker)
     cagr, start_price, end_price = calculate_cagr(hist)
 
-    # NEW: Ask if user wants to override CAGR
+    # Growth override
     st.subheader("📈 Projected Growth Rate")
     st.markdown(f"**Auto-calculated CAGR (2-year):** {cagr}%")
     use_override = st.toggle("Override with my own growth %", value=False)
-
     if use_override:
         growth_override = st.number_input("Enter your own projected annual growth rate (%)", value=cagr, step=0.1)
     else:
         growth_override = cagr
 
+    # Forecast
     forecast = compute_forecast(info, hist, amount_invested, term_years, drip_enabled, growth_override)
 
+    # Price Growth Summary
     st.subheader("📊 Projected Stock Price Growth")
     st.markdown(f"- **Price 2 Years Ago:** ${start_price}")
     st.markdown(f"- **Current Price:** ${end_price}")
     st.markdown(f"- **Growth Rate Used:** {growth_override}%")
     st.markdown(f"- **Projected Price in {term_years} Years:** ${forecast['Future Price Estimate']}")
 
+    # Forecast Breakdown
     st.subheader("📘 Forecast Breakdown")
     st.markdown(f"**Shares =** ${amount_invested} ÷ ${forecast['Current Price']} = {forecast['Estimated Shares']}")
     st.markdown(f"**Annual Dividends =** {forecast['Estimated Shares']} × ${forecast['Dividend/Share ($/yr)']} = ${forecast['Annual Dividend Income ($)']}")
-    st.markdown(f"**Projected Asset Value =** ${forecast['Projected Asset Value']}")
+
+    # 🔷 Highlight Projected Asset Value
+    st.markdown(
+        f"""<div style="background-color:#e7f8ef;padding:16px;border-radius:10px;">
+        <h4 style="margin-bottom:0;">💰 Projected Asset Value</h4>
+        <p style="font-size:22px;color:#106b36;font-weight:bold;margin-top:4px;">${forecast['Projected Asset Value']}</p>
+        </div>""",
+        unsafe_allow_html=True
+    )
+
     st.markdown(f"**Total Dividends Over {term_years} Years =** ${forecast['Total Dividends Over Term']}")
 
+    # Summary Table
     st.subheader("🧾 Summary")
     st.dataframe(pd.DataFrame(forecast.items(), columns=["Metric", "Value"]), use_container_width=True)
 
+    # Risk Metrics
     st.subheader("🛡️ Risk Metrics")
     risk = {
         "Beta": round(info.get("beta", 0.0), 2),
@@ -120,6 +133,7 @@ if ticker and amount_invested > 0 and term_years > 0:
     }
     st.table(pd.DataFrame.from_dict(risk, orient="index", columns=["Value"]))
 
+    # Momentum
     st.subheader("📈 Momentum Indicators")
     close = hist["Close"].dropna()
     if len(close) >= 50:
