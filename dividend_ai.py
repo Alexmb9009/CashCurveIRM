@@ -1,6 +1,5 @@
 import streamlit as st
 import requests
-import datetime
 
 API_KEY = "H0CM17PePAJ_6ny8pFIqgxwOfXYhD9Tp"
 
@@ -11,6 +10,7 @@ def get_stock_info(ticker):
         # Get current price
         price_url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/prev?adjusted=true&apiKey={API_KEY}"
         r = requests.get(price_url)
+        r.raise_for_status()
         price_data = r.json()['results'][0]
         price = price_data['c']
         prev_close = price_data['c']  # You can refine this to get actual close if needed
@@ -21,14 +21,18 @@ def get_stock_info(ticker):
         name = f['results'].get('name', ticker)
         sector = f['results'].get('sic_description', 'Unknown')
 
-        # Get dividend yield
+        # Get dividend yield (safe)
         div_url = f"https://api.polygon.io/v3/reference/dividends?ticker={ticker}&apiKey={API_KEY}&limit=1"
         d = requests.get(div_url).json()
-        if d['results']:
-            dividend = float(d['results'][0]['cash_amount']) * float(d['results'][0]['frequency'].lower().count("quarterly") + 1)
-            yield_percent = dividend / price
+        if d.get('results'):
+            dividend_raw = d['results'][0]
+            dividend_amt = float(dividend_raw.get('cash_amount', 0))
+            frequency = dividend_raw.get('frequency', "")
+            frequency_str = str(frequency).lower()
+            dividend_annual = dividend_amt * 4 if "quarter" in frequency_str else dividend_amt
+            yield_percent = dividend_annual / price if price else 0
         else:
-            dividend = 0
+            dividend_annual = 0
             yield_percent = 0
 
         # Cap high yields
@@ -61,10 +65,9 @@ def simulate_income(price, yield_pct, amount, term_months):
     daily = monthly_return / 30.44
     weekly = monthly_return / 4.35
     annual = annual_return
-    total_income = monthly_return * (term_months)
+    total_income = monthly_return * term_months
     asset_value = amount + total_income
     return daily, weekly, monthly_return, annual, total_income, asset_value
-
 
 # ---------------------- UI ---------------------- #
 
@@ -105,6 +108,5 @@ if ticker_input:
         robinhood_url = f"https://robinhood.com/stocks/{ticker_input}"
         st.markdown(f"[🔗 View on Robinhood]({robinhood_url})")
 
-
 st.markdown("---")
-st.caption("Built with ❤️ using Polygon.io and Streamlit | [Join GitHub](https://github.com/Alexmb9009/CashCurveIRM)")
+st.caption("Built with ❤️ using Polygon.io and Streamlit | [GitHub](https://github.com/Alexmb9009/CashCurveIRM)")
