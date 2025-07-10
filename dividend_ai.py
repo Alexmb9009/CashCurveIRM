@@ -9,6 +9,22 @@ st.caption("Visualize your income and growth over time — investment-based insi
 
 # --- USER INPUT ---
 ticker = st.text_input("Stock Ticker", value="AAPL").upper()
+
+# --- LIVE DATA SNAPSHOT ---
+if ticker:
+    try:
+        live = yf.Ticker(ticker).info
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Live Price", f"${round(live.get('regularMarketPrice', 0), 2)}")
+        with col2:
+            st.metric("Market Cap", f"${round(live.get('marketCap', 0) / 1e9, 2)}B")
+        with col3:
+            st.metric("Volume", f"{live.get('volume', 0):,}")
+    except:
+        st.warning("Unable to fetch live data.")
+
+# --- CONTINUE INPUT ---
 amount_invested = st.number_input("Amount Invested ($)", min_value=0.0, step=100.0)
 term_years = st.number_input("Term Held (Years)", min_value=1, step=1)
 drip_enabled = st.toggle("Enable Dividend Reinvestment (DRIP)", value=False)
@@ -84,7 +100,7 @@ if ticker and amount_invested > 0 and term_years > 0:
     info, hist = get_data(ticker)
     cagr, start_price, end_price = calculate_cagr(hist)
 
-    # Growth override
+    # Growth override option
     st.subheader("📈 Projected Growth Rate")
     st.markdown(f"**Auto-calculated CAGR (2-year):** {cagr}%")
     use_override = st.toggle("Override with my own growth %", value=False)
@@ -108,11 +124,11 @@ if ticker and amount_invested > 0 and term_years > 0:
     st.markdown(f"**Shares =** ${amount_invested} ÷ ${forecast['Current Price']} = {forecast['Estimated Shares']}")
     st.markdown(f"**Annual Dividends =** {forecast['Estimated Shares']} × ${forecast['Dividend/Share ($/yr)']} = ${forecast['Annual Dividend Income ($)']}")
 
-    # 🔷 Highlight Projected Asset Value
+    # 🔷 Highlight Projected Asset Value (navy blue text)
     st.markdown(
         f"""<div style="background-color:#e7f8ef;padding:16px;border-radius:10px;">
         <h4 style="margin-bottom:0;">💰 Projected Asset Value</h4>
-        <p style="font-size:22px;color:#106b36;font-weight:bold;margin-top:4px;">${forecast['Projected Asset Value']}</p>
+        <p style="font-size:22px;color:#0A2342;font-weight:bold;margin-top:4px;">${forecast['Projected Asset Value']}</p>
         </div>""",
         unsafe_allow_html=True
     )
@@ -133,7 +149,7 @@ if ticker and amount_invested > 0 and term_years > 0:
     }
     st.table(pd.DataFrame.from_dict(risk, orient="index", columns=["Value"]))
 
-    # Momentum
+    # Momentum Indicators
     st.subheader("📈 Momentum Indicators")
     close = hist["Close"].dropna()
     if len(close) >= 50:
