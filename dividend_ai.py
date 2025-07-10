@@ -25,13 +25,14 @@ def get_data(tkr):
 def calculate_cagr(hist):
     close = hist["Close"].dropna()
     if len(close) < 2:
-        return 0.0
+        return 0.0, 0.0, 0.0
     start = close.iloc[0]
     end = close.iloc[-1]
     years = (close.index[-1] - close.index[0]).days / 365
     if start <= 0 or years <= 0:
-        return 0.0
-    return round(((end / start) ** (1 / years)) - 1, 4) * 100
+        return 0.0, start, end
+    cagr = ((end / start) ** (1 / years)) - 1
+    return round(cagr * 100, 2), round(start, 2), round(end, 2)
 
 # --- FORECAST ---
 def compute_forecast(info, hist, amount, term, drip):
@@ -43,7 +44,7 @@ def compute_forecast(info, hist, amount, term, drip):
 
     shares = amount / price if price > 0 else 0
     annual_div = shares * div_rate
-    cagr = calculate_cagr(hist)
+    cagr, _, _ = calculate_cagr(hist)
     growth_factor = 1 + (cagr / 100)
 
     if drip:
@@ -82,12 +83,18 @@ def compute_rsi(series, period=14):
 # --- DISPLAY ---
 if ticker and amount_invested > 0 and term_years > 0:
     info, hist = get_data(ticker)
+    cagr, start_price, end_price = calculate_cagr(hist)
     forecast = compute_forecast(info, hist, amount_invested, term_years, drip_enabled)
+
+    st.subheader("📊 Projected Stock Price Growth")
+    st.markdown(f"- **Price 2 Years Ago:** ${start_price}")
+    st.markdown(f"- **Current Price:** ${end_price}")
+    st.markdown(f"- **2-Year CAGR:** {cagr}%")
+    st.markdown(f"- **Projected Price in {term_years} Years:** ${forecast['Future Price Estimate']}")
 
     st.subheader("📘 Forecast Breakdown")
     st.markdown(f"**Shares =** ${amount_invested} ÷ ${forecast['Current Price']} = {forecast['Estimated Shares']}")
     st.markdown(f"**Annual Dividends =** {forecast['Estimated Shares']} × ${forecast['Dividend/Share ($/yr)']} = ${forecast['Annual Dividend Income ($)']}")
-    st.markdown(f"**Future Price =** ${forecast['Future Price Estimate']}")
     st.markdown(f"**Projected Asset Value =** ${forecast['Projected Asset Value']}")
     st.markdown(f"**Total Dividends Over {term_years} Years =** ${forecast['Total Dividends Over Term']}")
 
